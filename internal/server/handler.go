@@ -737,7 +737,11 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 		var acct *auth.Auth
 		if stickyUID != "" {
 			acct = h.cfg.Pool.PickByUIDForModel(stickyUID, bareModel)
-			if acct == nil || (len(candidateRealms) > 0 && !containsString(candidateRealms, acct.Realm())) {
+			// 若模型配置了优先域序列，且当前绑定的粘性号不在首选域中，解绑切回首选域
+			if acct != nil && len(candidateRealms) > 0 && acct.Realm() != candidateRealms[0] {
+				unbindSticky()
+				acct = nil
+			} else if acct == nil || (len(candidateRealms) > 0 && !containsString(candidateRealms, acct.Realm())) {
 				// 粘性号在当前模型不可用（冷却/占满/该模型被 6004 限额）或 realm 不符 → 解绑，
 				// 本次回落普通轮换。
 				unbindSticky()
