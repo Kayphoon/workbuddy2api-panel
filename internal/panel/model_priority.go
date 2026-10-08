@@ -3,6 +3,7 @@ package panel
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 
@@ -79,7 +80,11 @@ func (p *Panel) saveModelPriority(w http.ResponseWriter, r *http.Request) {
 			},
 		}
 		patchBytes, _ := json.Marshal(patchObj)
-		_, _ = p.cfg.SaveConfig(patchBytes)
+		if _, err := p.cfg.SaveConfig(patchBytes); err != nil {
+			log.Printf("panel: 保存 model_priority 配置失败: %v", err)
+			writeErr(w, http.StatusInternalServerError, "save config: "+err.Error())
+			return
+		}
 	}
 
 	var curRules map[string]pool.ModelPriorityRule
