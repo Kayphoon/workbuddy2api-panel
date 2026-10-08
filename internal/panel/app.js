@@ -338,13 +338,14 @@ let lastPackagesAt = 0;
 let expFetching = false;                       // 到期卡片在途标记（防重复打上游）
 const EXP_FRESH_MS = 2 * 60 * 1000;            // 缓存新鲜窗口：2 分钟内复用
 
-const TITLES = { accounts: '账号池', usage: '用量', packages: '积分构成', taskscenter: '任务中心', models: '模型与档位', config: '配置', logs: '运行日志' };
+const TITLES = { accounts: '账号池', usage: '用量', packages: '积分构成', taskscenter: '任务中心', models: '模型与档位', modelpriority: '模型优先级', config: '配置', logs: '运行日志' };
 function go(v) {
   view = v;
   document.querySelectorAll('.view').forEach(s => s.hidden = s.id !== 'view-' + v);
   document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.view === v));
   $('ttl').textContent = TITLES[v];
   if (v === 'models' && !$('mdBody').children.length) loadModels();
+  if (v === 'modelpriority') loadModelPriority();
   if (v === 'config') loadConfig();
   if (v === 'logs') loadLogs();
   if (v === 'usage') loadUsage();
@@ -2866,3 +2867,214 @@ async function loadExpiry(force) {
 if ($('btnExp')) $('btnExp').onclick = () => loadExpiry(true);
 
 if ($('btnPk')) $('btnPk').onclick = loadPackages;
+
+/* ── 模型调度优先级管理 ─────────────────────────────────────────── */
+let mpRules = {};
+let mpAccounts = [];
+let mpEditingModel = null;
+let mpCurrentSelectedAccts = [];
+
+async function loadModelPriority() {
+  const tbody = $('mpRulesTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--ink-3); padding:20px">加载中…</td></tr>';
+  try {
+    const res = await api('model_priority');
+    mpRules = res.rules || {};
+    mpAccounts = res.accounts || [];
+    renderModelPriorityTable();
+  } catch (err) {
+    toast('加载模型优先级失败: ' + err.message, 'err');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; color:var(--destructive); padding:20px">加载失败: ${esc(err.message)}</td></tr>`;
+  }
+}
+
+function renderModelPriorityTable() {
+  const tbody = $('mpRulesTableBody');
+  if (!tbody) return;
+  const keys = Object.keys(mpRules).sort();
+  if (keys.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--ink-3); padding:24px">暂未配置任何模型优先级规则，点击上方「+ 添加模型规则」配置。</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = keys.map(k => {
+    const r = mpRules[k] || {};
+    let realmHtml = '<span style="color:var(--ink-3)">默认</span>';
+    if (r.realms && r.realms.length > 0) {
+      realmHtml = r.realms.map((rm, idx) => {
+        const isGlobal = rm.toLowerCase() === 'global';
+        const tag = isGlobal ? '<span class="badge" style="background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.3)">国际版 Global</span>' 
+                             : '<span class="badge" style="background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3)">国内版 CN</span>';
+        return (idx > 0 ? ' <span style="color:var(--ink-3)">➔</span> ' : '') + tag;
+      }).join('');
+    }
+
+    let acctHtml = '<span style="color:var(--ink-3)">全池加权</span>';
+    if (r.accounts && r.accounts.length > 0) {
+      acctHtml = r.accounts.map((uid, idx) => {
+        const a = mpAccounts.find(x => x.uid === uid || x.nickname === uid);
+        const name = a ? a.nickname : uid;
+        const realmTag = a ? (a.realm === 'global' ? ' [Global]' : ' [CN]') : '';
+        return `<span style="display:inline-flex; align-items:center; gap:4px; margin:2px 4px; padding:2px 8px; background:var(--surface-2); border-radius:4px; border:1px solid var(--line); font-size:12px;">
+          <b style="color:var(--ink-3)">#${idx + 1}</b> ${esc(name)}<span style="color:var(--ink-3); font-size:11px">${realmTag}</span>
+        </span>`;
+      }).join('<span style="color:var(--ink-3)">➔</span>');
+    }
+
+    return `<tr>
+      <td><code style="font-size:13px; font-weight:600; color:var(--ink)">${esc(k)}</code></td>
+      <td>${realmHtml}</td>
+      <td><div style="display:flex; flex-wrap:wrap; align-items:center;">${acctHtml}</div></td>
+      <td style="text-align:right">
+        <button class="xs" onclick="window.editModelPriorityRule('${esc(k)}')">编辑</button>
+        <button class="xs danger" onclick="window.deleteModelPriorityRule('${esc(k)}')">删除</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openModelPriorityEditor(model = '') {
+  mpEditingModel = model;
+  const box = $('mpEditorBox');
+  if (!box) return;
+  box.style.display = 'block';
+  $('mpEditorTitle').textContent = model ? `编辑模型规则: ${model}` : '添加模型规则';
+  $('mpModelInput').value = model;
+  $('mpModelInput').disabled = !!model;
+
+  const rule = model ? (mpRules[model] || {}) : { realms: ['global', 'cn'], accounts: [] };
+
+  const r = (rule.realms || []).map(x => x.toLowerCase());
+  let rVal = 'none';
+  if (r.length === 2 && r[0] === 'global' && r[1] === 'cn') rVal = 'global_cn';
+  else if (r.length === 2 && r[0] === 'cn' && r[1] === 'global') rVal = 'cn_global';
+  else if (r.length === 1 && r[0] === 'global') rVal = 'global_only';
+  else if (r.length === 1 && r[0] === 'cn') rVal = 'cn_only';
+  $('mpRealmSelect').value = rVal;
+
+  mpCurrentSelectedAccts = [...(rule.accounts || [])];
+  renderPriorityAccountPickers();
+  box.scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderPriorityAccountPickers() {
+  const selBox = $('mpSelectedAccounts');
+  const availBox = $('mpAvailableAccounts');
+  if (!selBox || !availBox) return;
+
+  if (mpCurrentSelectedAccts.length === 0) {
+    selBox.innerHTML = '<span style="color:var(--ink-3); font-size:12px; padding:6px;">（未指定账号优先级，将按选定域全池加权挑选）</span>';
+  } else {
+    selBox.innerHTML = mpCurrentSelectedAccts.map((uid, idx) => {
+      const a = mpAccounts.find(x => x.uid === uid || x.nickname === uid);
+      const name = a ? a.nickname : uid;
+      const realm = a ? (a.realm === 'global' ? 'Global' : 'CN') : '';
+      const cred = a ? a.credits : 0;
+      return `<div style="display:flex; align-items:center; justify-content:space-between; background:var(--surface-2); padding:5px 10px; border-radius:5px; border:1px solid var(--line);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="display:inline-block; width:22px; height:22px; line-height:22px; text-align:center; background:var(--raise); border-radius:50%; font-size:11px; font-weight:bold; color:var(--ink)">${idx + 1}</span>
+          <b style="font-size:13px">${esc(name)}</b>
+          <span class="badge" style="font-size:11px">${realm}</span>
+          <span style="font-size:11px; color:var(--ink-3)">${cred}分</span>
+        </div>
+        <div style="display:flex; gap:4px;">
+          <button type="button" class="xs" onclick="window.movePriorityAccount(${idx}, -1)" ${idx === 0 ? 'disabled' : ''} title="上移">⬆</button>
+          <button type="button" class="xs" onclick="window.movePriorityAccount(${idx}, 1)" ${idx === mpCurrentSelectedAccts.length - 1 ? 'disabled' : ''} title="下移">⬇</button>
+          <button type="button" class="xs danger" onclick="window.removePriorityAccount(${idx})" title="移除">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  const unselected = mpAccounts.filter(a => !mpCurrentSelectedAccts.includes(a.uid) && !mpCurrentSelectedAccts.includes(a.nickname));
+  if (unselected.length === 0) {
+    availBox.innerHTML = '<span style="color:var(--ink-3); font-size:12px">全部账号已加入优先级队列</span>';
+  } else {
+    availBox.innerHTML = unselected.map(a => {
+      return `<button type="button" class="xs" style="display:inline-flex; align-items:center; gap:5px; padding:4px 9px;" onclick="window.addPriorityAccount('${a.uid}')">
+        + ${esc(a.nickname)} <span style="font-size:10px; opacity:0.7">(${a.realm})</span>
+      </button>`;
+    }).join('');
+  }
+}
+
+window.addPriorityAccount = function(uid) {
+  if (!mpCurrentSelectedAccts.includes(uid)) {
+    mpCurrentSelectedAccts.push(uid);
+    renderPriorityAccountPickers();
+  }
+};
+
+window.removePriorityAccount = function(idx) {
+  mpCurrentSelectedAccts.splice(idx, 1);
+  renderPriorityAccountPickers();
+};
+
+window.movePriorityAccount = function(idx, offset) {
+  const target = idx + offset;
+  if (target < 0 || target >= mpCurrentSelectedAccts.length) return;
+  const temp = mpCurrentSelectedAccts[idx];
+  mpCurrentSelectedAccts[idx] = mpCurrentSelectedAccts[target];
+  mpCurrentSelectedAccts[target] = temp;
+  renderPriorityAccountPickers();
+};
+
+window.editModelPriorityRule = function(model) {
+  openModelPriorityEditor(model);
+};
+
+window.deleteModelPriorityRule = async function(model) {
+  if (!confirm(`确定要删除模型「${model}」的调度优先级规则吗？`)) return;
+  const newRules = Object.assign({}, mpRules);
+  delete newRules[model];
+  try {
+    const res = await api('model_priority', { method: 'POST', body: JSON.stringify({ rules: newRules }) });
+    mpRules = res.rules || {};
+    renderModelPriorityTable();
+    toast(`已删除规则: ${model}`, 'ok');
+  } catch (err) {
+    toast('删除失败: ' + err.message, 'err');
+  }
+};
+
+async function saveCurrentPriorityRule() {
+  const modelName = $('mpModelInput').value.trim();
+  if (!modelName) {
+    toast('请输入模型名称或通配符', 'err');
+    return;
+  }
+
+  const rVal = $('mpRealmSelect').value;
+  let realms = [];
+  if (rVal === 'global_cn') realms = ['global', 'cn'];
+  else if (rVal === 'cn_global') realms = ['cn', 'global'];
+  else if (rVal === 'global_only') realms = ['global'];
+  else if (rVal === 'cn_only') realms = ['cn'];
+
+  const updatedRules = Object.assign({}, mpRules, {
+    [modelName]: {
+      realms: realms,
+      accounts: [...mpCurrentSelectedAccts],
+    }
+  });
+
+  const btn = $('btnMpSaveRule');
+  btn.disabled = true; btn.textContent = '保存中…';
+  try {
+    const res = await api('model_priority', { method: 'POST', body: JSON.stringify({ rules: updatedRules }) });
+    mpRules = res.rules || {};
+    renderModelPriorityTable();
+    $('mpEditorBox').style.display = 'none';
+    toast(`模型「${modelName}」调度规则已保存并立即生效`, 'ok');
+  } catch (err) {
+    toast('保存失败: ' + err.message, 'err');
+  } finally {
+    btn.disabled = false; btn.textContent = '保存该规则';
+  }
+}
+
+if ($('btnMpAdd')) $('btnMpAdd').onclick = () => openModelPriorityEditor('');
+if ($('btnMpReload')) $('btnMpReload').onclick = loadModelPriority;
+if ($('btnMpCancel')) $('btnMpCancel').onclick = () => { $('mpEditorBox').style.display = 'none'; };
+if ($('btnMpSaveRule')) $('btnMpSaveRule').onclick = saveCurrentPriorityRule;
+

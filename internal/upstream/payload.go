@@ -52,6 +52,7 @@ func PrepareBodyOptWithEffortsAndDefault(src []byte, sanitize bool, efforts map[
 	normalizeToolPatterns(obj)
 	normalizeRoles(obj)
 	normalizeImageURL(obj)
+	normalizeStop(obj)
 	// tool 配对三步（见 tool_pairing.go）：先合并再重排再清理。所有模型一律执行（独立于
 	// deepseek-only 的 sanitize 开关）。这是「让请求通过」的安全网——不完整配对的
 	// tool_calls/tool 结果会让上游对之后每条消息都返 400，必须先行剔除；
@@ -437,3 +438,26 @@ func unescapePatternLiteralEscapes(node any) {
 		}
 	}
 }
+
+// normalizeStop 归一化 stop 字段为 []string 数组，兼容腾讯上游 Go struct 的强类型约束。
+func normalizeStop(obj map[string]any) {
+	v, exists := obj["stop"]
+	if !exists || v == nil {
+		return
+	}
+	switch s := v.(type) {
+	case string:
+		if strings.TrimSpace(s) == "" {
+			delete(obj, "stop")
+		} else {
+			obj["stop"] = []any{s}
+		}
+	case []any:
+		if len(s) == 0 {
+			delete(obj, "stop")
+		}
+	default:
+		delete(obj, "stop")
+	}
+}
+

@@ -80,26 +80,28 @@ type Pool struct {
 	stopCh chan struct{}
 	// closeOnce 保证 Close 幂等（多次调用不重复 close channel）。
 	closeOnce sync.Once
+
+	modelPriorityMu sync.RWMutex
+	modelPriority   map[string]ModelPriorityRule
 }
 
 // defaultBreaker* 熔断器默认参数（FreeBuff2API 参考口径）。
 func New(stateFp string) *Pool {
 	p := &Pool{
-		byUID:              map[string]*entry{},
-		stateFp:            stateFp,
-		breakerThreshold:   defaultBreakerThreshold,
-		breakerCooldown:    defaultBreakerCooldown,
-		breakerCooldownMax: defaultBreakerCooldownMax,
-		idleWeightPerHour:  defaultIdleWeightPerHour,
-		idleWeightMax:      defaultIdleWeightMax,
-		preferExpiring:     true,
-		degradeThreshold:   defaultDegradeThreshold,
-		degradeCooldown:    defaultDegradeCooldown,
-		degradeCooldownMax: defaultDegradeCooldownMax,
-		// 探索缺省 30m：tier 0 垄断下的 tier 1 探索窗口（issue #136）。用户经
-		// config 显式 "0" 关停（SetCostExploreInterval(0)）。
+		byUID:               map[string]*entry{},
+		stateFp:             stateFp,
+		breakerThreshold:    defaultBreakerThreshold,
+		breakerCooldown:     defaultBreakerCooldown,
+		breakerCooldownMax:  defaultBreakerCooldownMax,
+		idleWeightPerHour:   defaultIdleWeightPerHour,
+		idleWeightMax:       defaultIdleWeightMax,
+		preferExpiring:      true,
+		degradeThreshold:    defaultDegradeThreshold,
+		degradeCooldown:     defaultDegradeCooldown,
+		degradeCooldownMax:  defaultDegradeCooldownMax,
 		costExploreInterval: defaultCostExploreInterval,
 		exploreLast:         map[string]time.Time{},
+		modelPriority:       map[string]ModelPriorityRule{},
 	}
 	if stateFp != "" {
 		p.load()

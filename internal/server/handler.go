@@ -723,12 +723,21 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 	chatMeta.TraceID = r.Header.Get("X-Trace-ID")
 
+	// 域优先级序列计算：若请求为裸名（未显式声明 [realm:] 前缀），且该模型配置了 realms 优先级规则，
+	// 按配置顺序依次尝试（如 ["global", "cn"]）；若已显式声明前缀，则锁定在指定 realm 单域。
+	candidateRealms := []string{realm}
+	if peek.Model == bareModel {
+		if rule := h.cfg.Pool.MatchingPriorityRule(bareModel); rule != nil && len(rule.Realms) > 0 {
+			candidateRealms = rule.Realms
+		}
+	}
+
 	for i := 0; i < h.cfg.MaxRotate; i++ {
 		// 选号：粘性号优先（PickByUIDForModel 已校验该模型可用性 + 在途未满），否则普通轮换。
 		var acct *auth.Auth
 		if stickyUID != "" {
 			acct = h.cfg.Pool.PickByUIDForModel(stickyUID, bareModel)
-			if acct == nil || (realm != "" && acct.Realm() != realm) {
+			if acct == nil || (len(candidateRealms) > 0 && !containsString(candidateRealms, acct.Realm())) {
 				// 粘性号在当前模型不可用（冷却/占满/该模型被 6004 限额）或 realm 不符 → 解绑，
 				// 本次回落普通轮换。
 				unbindSticky()
@@ -736,9 +745,13 @@ func (h *Handler) chatCompletions(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if acct == nil {
-			// 模型感知 + realm 感知选号：模型非空时启用 6004 模型级冷却豁免
-			// （healthyForModel），realm 谓词过滤跨域账号。
-			acct = h.cfg.Pool.PickExcludingForRealm(tried, bareModel, realm)
+			// 模型感知 + realm 优先级感知选号：按候选域的优先级顺序依次尝试
+			for _, tryRealm := range candidateRealms {
+				acct = h.cfg.Pool.PickExcludingForRealm(tried, bareModel, tryRealm)
+				if acct != nil {
+					break
+				}
+			}
 		}
 		if acct == nil {
 			st.status = http.StatusServiceUnavailable
@@ -1475,6 +1488,15 @@ func (h *Handler) hintContext(bareModel string, hasImage bool) upstream.HintCont
 		}
 	}
 	return ctx
+}
+
+func containsString(list []string, s string) bool {
+	for _, item := range list {
+		if strings.EqualFold(item, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // hintOf 末端错误透传的统一 hint 入口：kind + 上游原文 + 请求上下文 →

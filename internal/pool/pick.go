@@ -54,6 +54,31 @@ func (p *Pool) pick(tried map[string]bool, reqModel, realm string) *auth.Auth {
 	// floorBlocked 积分保底拦截判定（实现在 floorBlockedForRealmModel，与粘性路径共用）：
 	// 触底 + 收费（本地实测台账 或 上游目录倍率）即拦；免费/未知倍率不受限。
 	floorBlocked := func(e *entry) bool { return p.floorBlockedForRealmModel(e, reqModel, realm, now) }
+
+	// 账号优先级命中：若该模型显式配置了账号优先级序列，按顺序挑选首个可服务账号直接命中。
+	if rule := p.MatchingPriorityRule(reqModel); rule != nil && len(rule.Accounts) > 0 {
+		for _, target := range rule.Accounts {
+			e := p.FindEntryByUIDOrNicknameLocked(target)
+			if e == nil {
+				continue
+			}
+			uid := e.a.UID
+			if tried != nil && tried[uid] {
+				continue
+			}
+			if !realmOK(e) || !healthyOf(e) || floorBlocked(e) || p.inFlightFull(e) {
+				continue
+			}
+			// 命中优先账号
+			e.pruneExpiredModelCooldowns(now)
+			e.pruneExpiredModelCosts(now)
+			e.lastUsed = now
+			p.pickSeq++
+			e.usedSeq = p.pickSeq
+			return e.a
+		}
+	}
+
 	var cands []*entry
 	for uid, e := range p.byUID {
 		if tried != nil && tried[uid] {

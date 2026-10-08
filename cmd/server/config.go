@@ -205,6 +205,8 @@ type Config struct {
 		// tier 0（免费）/ tier 1（无观测）不受限；签到回血越过 floor 自动恢复。
 		// 默认 0 = 关闭；负值钳 0。
 		CreditFloor int64 `json:"credit_floor"`
+		// ModelPriority 模型调度优先级：模型名（如 kimi-k3 或 deepseek*）-> 规则（域优先级顺序 + 账号优先级顺序）
+		ModelPriority map[string]pool.ModelPriorityRule `json:"model_priority"`
 	} `json:"pool"`
 
 	SessionSticky struct {

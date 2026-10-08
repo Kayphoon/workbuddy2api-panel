@@ -611,6 +611,9 @@ legend { font-size: 12px; color: var(--ink-3); font-weight: 600; padding-bottom:
       <li><a href="#models" data-view="models">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.8 14 5v6L8 14.2 2 11V5z"/><path d="M2 5l6 3.2L14 5M8 8.2v6"/></svg>
         模型与档位</a></li>
+      <li><a href="#modelpriority" data-view="modelpriority">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2.5 3.5h11M2.5 8h7M2.5 12.5h4M12 6.5l-2.5 2.5 2.5 2.5"/></svg>
+        模型优先级</a></li>
       <li><a href="#config" data-view="config">
         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.6v1.9M8 12.5v1.9M1.6 8h1.9M12.5 8h1.9M3.5 3.5l1.3 1.3M11.2 11.2l1.3 1.3M12.5 3.5l-1.3 1.3M4.8 11.2l-1.3 1.3"/></svg>
         配置</a></li>
@@ -884,6 +887,73 @@ legend { font-size: 12px; color: var(--ink-3); font-weight: 600; padding-bottom:
           <table class="acc zebra">
             <thead id="usCreditHead"></thead>
             <tbody id="usCreditBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 模型优先级 -->
+    <section class="view" id="view-modelpriority" hidden>
+      <div class="box">
+        <header>
+          <h3>模型优先级调度 <span class="sub">按模型管理域流转顺序（Global/CN 容灾降级）与账号优先序列（支持前缀通配符如 deepseek*）</span></h3>
+          <span class="grow"></span>
+          <button class="xs pri" id="btnMpAdd">+ 添加模型规则</button>
+          <button class="xs" id="btnMpReload">刷新</button>
+        </header>
+
+        <div class="pad" style="border-bottom: 1px solid var(--line-soft); background: var(--surface-2); border-radius: 8px; margin: 10px; display: none;" id="mpEditorBox">
+          <h4 id="mpEditorTitle" style="margin-top:0">配置模型规则</h4>
+          <div class="grid2">
+            <label class="fld"><span class="lb">模型名称 / 通配符</span>
+              <input id="mpModelInput" placeholder="例如 kimi-k3 或 deepseek*">
+              <span class="hint">精确名称优先于通配符（大小写不敏感）</span>
+            </label>
+            <label class="fld"><span class="lb">域流转优先级 (Realm Priority)</span>
+              <select id="mpRealmSelect">
+                <option value="global_cn">国际版优先 (Global ➔ CN 回落)</option>
+                <option value="cn_global">国内版优先 (CN ➔ Global 回落)</option>
+                <option value="global_only">仅国际版 (Global-only)</option>
+                <option value="cn_only">仅国内版 (CN-only)</option>
+                <option value="none">默认未指定</option>
+              </select>
+              <span class="hint">当优先域账号全忙或冷却时，自动尝试下一个域</span>
+            </label>
+          </div>
+          <div style="margin-top: 14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 6px;">
+              <span class="lb" style="font-weight:600">账号优先级序列 (Account Priority Order)</span>
+              <span class="hint">排在最上方的账号优先级最高；不可用时按序自动顺延</span>
+            </div>
+            <div id="mpSelectedAccounts" style="display:flex; flex-direction:column; gap:6px; min-height:40px; padding:8px; background:var(--surface); border:1px dashed var(--line); border-radius:6px; margin-bottom:10px;">
+              <!-- 动态已选账号 -->
+            </div>
+            <div>
+              <span class="lb" style="font-size:12px; color:var(--ink-3);">点击添加待选账号：</span>
+              <div id="mpAvailableAccounts" style="display:flex; flex-wrap:wrap; gap:6px; margin-top:6px;">
+                <!-- 候选账号 pill -->
+              </div>
+            </div>
+          </div>
+          <div style="margin-top: 16px; display:flex; gap:10px; justify-content:flex-end;">
+            <button class="xs" id="btnMpCancel">取消</button>
+            <button class="xs pri" id="btnMpSaveRule">保存该规则</button>
+          </div>
+        </div>
+
+        <div class="tbl-wrap">
+          <table class="acc zebra">
+            <thead>
+              <tr>
+                <th style="width:20%">模型 / 模式</th>
+                <th style="width:25%">域流转顺序</th>
+                <th>账号优先级序列</th>
+                <th style="width:15%; text-align:right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="mpRulesTableBody">
+              <tr><td colspan="4" style="text-align:center; color:var(--ink-3); padding:20px">加载中…</td></tr>
+            </tbody>
           </table>
         </div>
       </div>
