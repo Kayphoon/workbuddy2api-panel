@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"sort"
 
-	"workbuddy2api/internal/pool"
+	"github.com/linguo2625469/workbuddy2api-panel/internal/pool"
 )
 
 // getModelPriority 获取当前模型优先级配置、账号简要信息、以及已知模型列表

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"workbuddy2api/internal/auth"
+	"github.com/linguo2625469/workbuddy2api-panel/internal/auth"
 )
 
 func TestModelPriorityRuleMatching(t *testing.T) {
