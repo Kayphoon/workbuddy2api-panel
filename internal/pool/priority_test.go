@@ -40,9 +40,9 @@ func TestModelPriorityRuleMatching(t *testing.T) {
 
 func TestModelAccountPriorityPick(t *testing.T) {
 	p := New("")
-	a1 := &auth.Auth{UID: "uid-first", Nickname: "天真有邪", Site: auth.SiteCN}
-	a2 := &auth.Auth{UID: "uid-second", Nickname: "提米", Site: auth.SiteCN}
-	a3 := &auth.Auth{UID: "uid-normal", Nickname: "普通号", Site: auth.SiteCN}
+	a1 := &auth.Auth{UID: "uid-first", Nickname: "天真有邪", Domain: "www.codebuddy.cn"}
+	a2 := &auth.Auth{UID: "uid-second", Nickname: "提米", Domain: "www.codebuddy.cn"}
+	a3 := &auth.Auth{UID: "uid-normal", Nickname: "普通号", Domain: "www.codebuddy.cn"}
 
 	p.byUID["uid-first"] = &entry{a: a1, credits: 5000}
 	p.byUID["uid-second"] = &entry{a: a2, credits: 5000}

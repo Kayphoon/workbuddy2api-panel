@@ -2,7 +2,6 @@ package pool
 
 import (
 	"strings"
-	"sync"
 )
 
 // ModelPriorityRule 针对单一模型（精确名或通配符）的调度偏好规则
